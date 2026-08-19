@@ -61,7 +61,7 @@ cp env.example .env
 # Google Gemini API 설정
 GEMINI_API_KEY=your-google-gemini-api-key-here
 
-# 사용할 Gemini 모델명 (기본값: gemini-2.5-flash)
+# 사용할 Gemini 모델명
 GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
