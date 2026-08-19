@@ -1,0 +1,80 @@
+---
+title: "Quarto Document Translation Example"
+author: "Author Name"
+date: "2026-08-19"
+format:
+  html:
+    toc: true
+    code-fold: true
+execute:
+  echo: true
+  warning: false
+---
+
+# Introduction to Quarto
+
+Quarto is an open-source scientific and technical publishing system built on Pandoc.
+This sample document demonstrates how Quarto features (frontmatter, computational cells, callouts, and shortcodes) are preserved during translation.
+
+## Computational Code Chunks
+
+### Python Analysis
+
+The following Python cell creates a dataset and displays a summary. Notice that code execution options (`#|`) and code itself are preserved, while captions and comments are translated:
+
+```{python}
+#| label: fig-polar
+#| fig-cap: "A line plot on a polar axis"
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Generate sample data points
+r = np.arange(0, 2, 0.01)
+theta = 2 * 2 * np.pi * r
+
+fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+ax.plot(theta, r)
+ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
+ax.grid(True)
+plt.show()
+```
+
+### R Code Chunk
+
+```{r}
+#| label: tbl-summary
+#| tbl-cap: "Summary statistics of cars dataset"
+
+# Display summary statistics
+summary(cars)
+```
+
+## Quarto Callout Blocks
+
+::: {.callout-note}
+Note that callout blocks use three colons (`:::`) and can contain markdown text.
+:::
+
+::: {.callout-warning title="Important Warning"}
+Do not translate the callout class names like `.callout-warning`.
+:::
+
+::: {.callout-tip}
+## Tip with Custom Header
+This is a helpful tip for readers.
+:::
+
+## Math and Equations
+
+Inline equation: $E = mc^2$
+
+Display equation:
+
+$$
+\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
+$$
+
+## Conclusion
+
+Quarto documents (`.qmd`) combine markdown text with computational code and publication metadata.

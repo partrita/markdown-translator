@@ -1,407 +1,200 @@
-# Markdown Translator
+# Markdown & Quarto Translator (마크다운 및 쿼토 번역기)
 
-A powerful command-line tool that uses Google Gemini AI to translate markdown and MDX files from English to any specified language while preserving formatting and structure.
+[🌐 English Version (README.en.md)](README.en.md)
 
-## Features
+Google Gemini AI를 사용하여 Markdown, MDX 및 Quarto Document (`.qmd`) 파일의 서식과 구조를 완벽하게 보존하면서 다양한 언어로 번역하는 **고성능 Rust 기반 CLI 도구**입니다.
 
-- 🌍 **Multi-language support** - Translate to 40+ languages
-- 📝 **Markdown-aware** - Preserves all markdown formatting (headers, links, code blocks, tables, etc.)
-- 🔄 **Smart chunking** - Handles large files by splitting content intelligently
-- 🎯 **Selective translation** - Only translates text content, keeps code and URLs intact
-- 📂 **Batch processing** - Translate multiple files using glob patterns (e.g., `docs/**/*.md`)
-- 🏗️ **Structure preservation** - Maintain directory structure or flatten output as needed
-- 📊 **Progress tracking** - Real-time progress indication with spinners for single files and batches
-- 🎨 **Beautiful CLI** - Colorful, user-friendly command-line interface
-- ⚡ **Fast processing** - Optimized for speed with high-performance Gemini model
+## 주요 기능
 
-## Installation
+- 🌍 **40개 이상의 다국어 지원** - 한국어, 영어, 일본어, 중국어, 스페인어, 프랑스어, 독일어 등 다양한 언어 지원
+- 📝 **Markdown, MDX, Quarto (.qmd) 지원** - 헤더, 링크, 코드 블록, 표, 인용구뿐만 아니라 Quarto 전용 구문(YAML Frontmatter, 실행 옵션 `#|`, Callout 블록 `:::`, Shortcode)의 서식을 손상 없이 유지
+- 🔄 **스마트 청킹(Smart Chunking)** - 대용량 파일도 컨텍스트 길이에 맞춰 지능적으로 분할 번역
+- 🎯 **선택적 번역** - 코드 블록 내 주석 및 캡션은 번역하되, 실행 코드, URL, 파일 경로는 그대로 보존
+- 📂 **배치(Batch) 일괄 처리** - Glob 패턴(`docs/**/*.qmd`, `docs/**/*.md`)을 통한 다중 파일 동시 번역
+- 🏗️ **디렉토리 구조 유지/평탄화** - 원본 하위 폴더 구조를 그대로 유지하거나 단일 폴더로 평탄화(`--flat`) 가능
+- 📊 **실시간 진행률 표시** - `indicatif` 기반의 직관적인 스피너 및 진행률 표시 UI
+- ⚡ **빠르고 안정적인 Rust 비동기 엔진** - `tokio` 및 `reqwest` 기반의 빠른 속도와 안정적인 자원 관리
 
-### Prerequisites
+## 설치 및 빌드
 
-- Node.js 16.0.0 or higher
-- Google Gemini API key ([Get one here](https://aistudio.google.com/app/apikey))
+### 요구 사항
 
-> **Note**: This tool uses ES modules (ESM) and requires Node.js 16+ for full compatibility.
+- Rust 1.70 이상 (`cargo` 포함)
+- Google Gemini API 키 ([Google AI Studio에서 무료 발급](https://aistudio.google.com/app/apikey))
 
-### Install dependencies
-
-```bash
-npm install
-```
-
-### Make CLI globally available (optional)
+### 빌드 및 설치
 
 ```bash
-npm link
+# 릴리즈 바이너리 빌드
+cargo build --release
+
+# 시스템 전역 PATH에 설치 (어느 폴더에서든 사용 가능하도록 설치)
+cargo install --path .
 ```
 
-Or run directly with Node:
+컴파일된 바이너리는 `./target/release/md-translate`에 생성됩니다.
+
+> [!TIP]
+> `cargo install --path .` 명령어를 실행하면 `~/.cargo/bin/md-translate`에 바이너리가 설치되어 **어느 폴더/경로에서나** `md-translate` 명령어로 바로 실행할 수 있습니다.
+> 
+> *참고: `~/.cargo/bin` 디렉토리가 시스템의 `PATH` 환경 변수에 등록되어 있어야 합니다 (보통 Rust 설치 시 자동 등록).*
+> 
+> ```bash
+> # 설치 후 다른 폴더에서 바로 사용:
+> export GEMINI_API_KEY="your-api-key"  # 또는 전역 환경 변수 설정
+> md-translate translate -i file.md -l Korean
+> ```
+
+## 환경 설정
+
+### 1. `.env` 파일 설정 (권장)
+
+예제 환경 설정 파일을 복사하여 `.env` 파일을 생성합니다:
 
 ```bash
-node bin/cli.js
+cp env.example .env
 ```
 
-## Setup
+`.env` 파일을 열어 API 키와 사용할 모델을 설정합니다:
 
-### 1. Get Google Gemini API Key
+```env
+# Google Gemini API 설정
+GEMINI_API_KEY=your-google-gemini-api-key-here
 
-1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Create a new API key
-3. Copy the generated key
+# 사용할 Gemini 모델명 (기본값: gemini-2.5-flash)
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
 
-### 2. Set API Key
+### 2. 환경 변수 또는 명령줄 옵션 사용
 
-**Option A: Environment Variable (Recommended)**
-
+**환경 변수로 설정:**
 ```bash
 export GEMINI_API_KEY="your-api-key-here"
+export GEMINI_MODEL="gemini-3.5-flash-lite"
 ```
 
-**Option B: Command Line Argument**
+**명령줄 옵션으로 직접 전달:**
+```bash
+./target/release/md-translate translate -i file.md -l Korean --key your-api-key-here --model gemini-3.5-flash-lite
+```
+
+## 사용법
+
+### 기본 파일 번역
 
 ```bash
-md-translate translate -i file.md -l Spanish --key your-api-key-here
+# README.md를 한국어로 번역 (README_korean.md 생성)
+./target/release/md-translate translate -i README.md -l Korean
+
+# Quarto 문서(.qmd) 번역
+./target/release/md-translate translate -i analysis.qmd -l Korean
+
+# 출력 파일 경로를 직접 지정하여 번역
+./target/release/md-translate translate -i docs/guide.md -l French -o docs/guide_fr.md
+
+# API 키와 모델을 명령줄 옵션으로 직접 지정
+./target/release/md-translate translate -i file.qmd -l German --key your-api-key --model gemini-3.5-flash-lite
 ```
 
-## Usage
+### 배치(Batch) 다중 파일 번역
 
-### Basic Translation
+Glob 패턴을 사용하여 여러 마크다운/Quarto 파일을 한 번에 번역할 수 있습니다:
 
 ```bash
-# Translate README.md to Spanish
-md-translate translate -i README.md -l Spanish
+# 현재 디렉토리의 모든 .md 및 .qmd 파일을 한국어로 번역하여 ./korean/ 폴더에 저장
+./target/release/md-translate translate -i "*.qmd" -l Korean -d ./korean/
 
-# Translate with custom output file
-md-translate translate -i docs/guide.md -l French -o docs/guide_fr.md
+# docs 폴더 및 모든 하위 폴더의 마크다운/Quarto 파일을 디렉토리 구조를 유지하며 번역
+./target/release/md-translate translate -i "docs/**/*.qmd" -l Japanese -d ./translations/
 
-# Translate using API key argument
-md-translate translate -i file.md -l German --key your-api-key
+# 하위 디렉토리 구조 없이 단일 폴더에 모두 저장 (--flat)
+./target/release/md-translate translate -i "content/**/*.{md,qmd}" -l German -d ./output/ --flat
+
+# 접미사(suffix)를 커스텀 지정 (예: sample_ko.qmd)
+./target/release/md-translate translate -i "*.qmd" -l Korean -d ./translated/ --suffix "ko"
 ```
 
-### Batch Processing
+### 지원 명령어
 
-The tool supports batch processing of multiple markdown files using glob patterns:
+#### `translate` - 마크다운/MDX/Quarto 파일 번역
 
 ```bash
-# Translate all .md files in current directory
-md-translate translate -i "*.md" -l Spanish -d ./spanish/
+./target/release/md-translate translate [옵션]
 
-# Translate all markdown files in docs folder and subfolders
-md-translate translate -i "docs/**/*.md" -l French -d ./translations/
-
-# Batch translate with flat structure (no subdirectories)
-md-translate translate -i "content/**/*.md" -l German -d ./output/ --flat
-
-# Batch translate with custom suffix
-md-translate translate -i "*.md" -l Japanese -d ./translated/ --suffix "ja"
+옵션:
+  -i, --input <패턴>       입력 파일 경로 또는 Glob 패턴 (필수)
+                          예: "file.md", "document.qmd", "*.qmd", "docs/**/*.md"
+  -l, --language <언어>    번역할 대상 언어 (필수, 예: Korean, Spanish, French)
+  -o, --output <파일>      출력 파일 경로 (단일 파일 번역 시)
+  -d, --output-dir <디렉토리> 출력 디렉토리 (배치 번역 또는 단일 파일)
+  -k, --key <API키>        Google Gemini API 키 (.env에 설정 시 생략 가능)
+  -m, --model <모델명>     Google Gemini 모델명 (.env에 설정 시 생략 가능, 기본값: gemini-3.5-flash-lite)
+      --flat              출력 디렉토리에서 하위 폴더 구조 없이 평탄화
+      --suffix <접미사>    출력 파일명 뒤에 붙을 접미사 (기본값: 언어명)
 ```
 
-### Available Commands
-
-#### `translate` - Translate a markdown or MDX file
+#### `languages` - 지원 언어 목록 확인
 
 ```bash
-md-translate translate [options]
-
-Options:
-  -i, --input <pattern>    Input file path or glob pattern (required)
-                          Examples: "file.md", "*.md", "docs/**/*.md"
-  -l, --language <lang>    Target language (required)
-  -o, --output <file>      Output file path (for single file translation)
-  -d, --output-dir <dir>   Output directory (for batch translation or single file)
-  -k, --key <apikey>       Google Gemini API key (optional)
-  --flat                   Use flat structure in output directory (default: preserve structure)
-  --suffix <suffix>        Custom suffix for output files (default: language name)
+./target/release/md-translate languages
 ```
 
-#### `languages` - List supported languages
+#### `setup` - 설정 가이드 확인
 
 ```bash
-md-translate languages
+./target/release/md-translate setup
 ```
 
-#### `setup` - Show setup guide
+#### `--help` - 도움말 출력
 
 ```bash
-md-translate setup
+./target/release/md-translate --help
 ```
 
-#### `--help` - Show help
+## 지원 언어
 
-```bash
-md-translate --help
-```
+40개 이상의 언어를 지원하며, Google Gemini가 지원하는 모든 언어 이름을 사용할 수 있습니다:
 
-## Supported Languages
+- **아시아**: Korean(한국어), Japanese(일본어), Chinese(중국어), Hindi(힌디어), Thai(태국어), Vietnamese(베트남어), Indonesian(인도네시아어), Malay(말레이어) 등
+- **유럽**: English(영어), Spanish(스페인어), French(프랑스어), German(독일어), Italian(이탈리아어), Portuguese(포르투갈어), Dutch(네덜란드어), Russian(러시아어), Polish(폴란드어), Swedish(스웨덴어), Norwegian(노르웨이어), Danish(덴마크어), Finnish(핀란드어), Greek(그리스어), Ukrainian(우크라이나어), Czech(체코어) 등
+- **중동**: Arabic(아랍어), Hebrew(히브리어), Turkish(튀르키예어) 등
 
-The tool supports 40+ languages including:
+## 번역 대상 및 보존 규칙
 
-- **European**: Spanish, French, German, Italian, Portuguese, Dutch, Russian, Polish, Swedish, Norwegian, Danish, Finnish, Greek, Ukrainian, Czech, Hungarian, Romanian, Bulgarian, Croatian, Serbian, Slovak, Slovenian, Estonian, Latvian, Lithuanian, Catalan, Basque, Welsh, Irish
-- **Asian**: Chinese, Japanese, Korean, Hindi, Thai, Vietnamese, Indonesian, Malay
-- **Middle Eastern**: Arabic, Hebrew, Turkish
+✅ **번역되는 항목**:
+- 제목(Heading) 텍스트
+- 본문 단락(Paragraph)
+- 목록(List) 항목
+- 표(Table) 내부 텍스트
+- 링크(Link) 텍스트
+- 이미지 대체 텍스트(Alt text)
+- 인용문(Blockquote)
+- 코드 블록 내부의 설명 주석 (`//`, `/* */`, `#` 등)
 
-## Examples
+❌ **원형 그대로 보존되는 항목**:
+- 코드 블록 및 인라인 코드의 실행 코드
+- URL 링크 및 파일 경로
+- 마크다운 문법 기호 (`#`, `*`, `_`, `>` 등)
+- HTML 태그
+- 수식(LaTeX / Mathjax)
+- 고유 명사 및 기술 전문 용어
 
-### Single File Translation
-
-#### Example 1: Basic Translation
-
-```bash
-md-translate translate -i README.md -l Spanish
-```
-
-**Output**: Creates `README_spanish.md` with Spanish translation
-
-#### Example 2: Custom Output Path
-
-```bash
-md-translate translate -i docs/api.md -l French -o docs/fr/api.md
-```
-
-**Output**: Creates `docs/fr/api.md` with French translation
-
-#### Example 3: Using API Key Argument
-
-```bash
-md-translate translate -i guide.md -l German --key AIzaSyC...
-```
-
-#### Example 4: Large File Translation
-
-The tool automatically handles large files by splitting them into chunks:
-
-```bash
-md-translate translate -i large-document.md -l Japanese
-```
-
-### Batch Translation
-
-#### Example 5: Translate All Markdown Files
-
-```bash
-md-translate translate -i "*.md" -l Spanish -d ./spanish/
-```
-
-**Output**: Translates all `.md` files in current directory to `./spanish/` folder
-
-#### Example 6: Recursive Translation with Structure Preservation
-
-```bash
-md-translate translate -i "docs/**/*.md" -l French -d ./translations/
-```
-
-**Output**: Translates all markdown files in `docs/` and preserves directory structure in `./translations/`
-
-```
-docs/
-├── guide.md
-├── api/
-│   └── reference.md
-└── tutorials/
-    └── getting-started.md
-
-# Becomes:
-translations/
-├── guide_french.md
-├── api/
-│   └── reference_french.md
-└── tutorials/
-    └── getting-started_french.md
-```
-
-#### Example 7: Flat Structure Batch Translation
-
-```bash
-md-translate translate -i "content/**/*.md" -l German -d ./output/ --flat
-```
-
-**Output**: Translates all files but places them in a flat structure (no subdirectories)
-
-```
-content/
-├── intro.md
-├── chapters/
-│   ├── chapter1.md
-│   └── chapter2.md
-└── appendix/
-    └── notes.md
-
-# Becomes:
-output/
-├── intro_german.md
-├── chapter1_german.md
-├── chapter2_german.md
-└── notes_german.md
-```
-
-#### Example 8: Custom Suffix
-
-```bash
-md-translate translate -i "*.md" -l Japanese -d ./translated/ --suffix "ja"
-```
-
-**Output**: Uses "ja" instead of "japanese" as the file suffix
-
-
-
-## What Gets Translated
-
-✅ **Translated**:
-- Heading text
-- Paragraph text
-- List items
-- Table content
-- Link text
-- Image alt text
-- Quote text
-
-❌ **Preserved**:
-- Code blocks and inline code
-- URLs and file paths
-- Markdown syntax characters
-- HTML tags
-- Mathematical expressions
-- Technical terms and proper nouns (when appropriate)
-
-## Output
-
-The tool provides detailed progress feedback for both single file and batch processing:
-
-### Single File Translation Output
-
-```
-╔═══════════════════════════════════════╗
-║        Markdown Translator            ║
-║     Powered by Google Gemini AI       ║
-╚═══════════════════════════════════════╝
-
-📋 Translation Details:
-   Input:    /path/to/README.md
-   Output:   /path/to/README_spanish.md
-   Language: Spanish
-
-⠋ Translating chunk 2/3...
-✅ Translation completed successfully!
-
-📊 Summary:
-   Original length:  2,845 characters
-   Translated length: 3,120 characters
-   Language:         Spanish
-   Output file:      /path/to/README_spanish.md
-```
-
-### Batch Translation Output
-
-```
-╔═══════════════════════════════════════╗
-║        Markdown Translator            ║
-║     Powered by Google Gemini AI       ║
-╚═══════════════════════════════════════╝
-
-📋 Batch Translation Details:
-   Pattern:  docs/**/*.md
-   Output:   /path/to/translations/
-   Language: Spanish
-   Structure: Preserved
-
-⠋ [2/5] reference.md - chunk 1/2...
-✅ All translations completed successfully!
-
-📊 Summary:
-   Files processed: 5
-   Successful: 5
-   Failed: 0
-   Output directory: /path/to/translations/
-```
-
-## Error Handling
-
-The tool provides clear error messages for common issues:
-
-- Missing or invalid API key
-- File not found
-- Invalid file format
-- Network connectivity issues
-- API rate limiting
-
-## Development
-
-### Project Structure
+## 프로젝트 구조
 
 ```
 markdown-translator/
-├── bin/
-│   └── cli.js           # CLI entry point
+├── Cargo.toml           # Rust 패키지 설정 및 의존성 관리
 ├── src/
-│   └── translator.js    # Core translation logic
-├── package.json         # Dependencies and scripts
-└── README.md           # Documentation
+│   ├── main.rs          # CLI 진입점 및 실행 흐름 제어
+│   ├── cli.rs           # Clap 매크로 기반 명령어/옵션 정의
+│   └── translator.rs    # Gemini API 연동 및 마크다운 번역 엔진
+├── .env                 # 환경 설정 파일 (API Key 및 Model)
+├── env.example          # 환경 설정 템플릿 예시
+├── examples/            # 번역 테스트용 샘플 마크다운 파일
+├── README.md            # 한국어 문서 (현재 파일)
+└── README.en.md         # 영문 문서
 ```
 
-### Architecture
+## 라이선스
 
-This project uses **ES modules (ESM)** for modern JavaScript development:
-
-- All files use `import`/`export` syntax instead of `require`/`module.exports`
-- `package.json` includes `"type": "module"` for ESM support
-- Compatible with the latest versions of dependencies (chalk 5.x, ora 8.x)
-- Requires Node.js 16+ for full ESM compatibility
-
-### Key Dependencies
-
-- `@google/generative-ai` - Google Gemini AI SDK
-- `commander` - Command-line interface framework
-- `chalk` - Terminal styling
-- `ora` - Progress spinners
-- `fs-extra` - Enhanced file system operations
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Troubleshooting
-
-### API Key Issues
-
-- Ensure your API key is valid and active
-- Check that you have sufficient quota in your Google Cloud account
-- Verify the API key has access to the Gemini API
-
-### Large File Processing
-
-- The tool automatically chunks large files
-- Each chunk is processed with a small delay to avoid rate limiting
-- Very large files may take several minutes to process
-
-### Batch Processing
-
-- Use quotes around glob patterns to prevent shell expansion: `"*.md"` not `*.md`
-- The `--output-dir` option is required for batch translation
-- Large batches may take considerable time; use progress indicators to monitor
-- Failed files in a batch are reported individually without stopping the process
-
-### Network Issues
-
-- Ensure you have a stable internet connection
-- The tool will retry failed requests automatically
-- Check firewall settings if you encounter connection issues
-
-## Support
-
-If you encounter any issues or have questions:
-
-1. Check the troubleshooting section above
-2. Run `md-translate setup` for configuration help
-3. Create an issue on the project repository
-
----
-
-**Happy translating! 🌍✨** 
+이 프로젝트는 MIT 라이선스에 따라 라이선스가 부여됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.

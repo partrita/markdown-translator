@@ -1,0 +1,23 @@
+[package]
+name = "markdown-translator"
+version = "0.0.1"
+edition = "2021"
+authors = ["Deepthough"]
+description = "A command line tool to translate markdown, MDX, and Quarto (QMD) files using Google Gemini AI"
+
+[[bin]]
+name = "md-translate"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dotenvy = "0.15"
+glob = "0.3"
+walkdir = "2.5"
+indicatif = "0.17"
+colored = "3.0"
+anyhow = "1.0"

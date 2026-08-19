@@ -2,86 +2,73 @@
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### 1. Build Project (Rust)
 ```bash
-npm install
+cargo build --release
 ```
 
-### 2. Get Google Gemini API Key
-1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Create a new API key
-3. Copy the generated key
+Binary will be generated at `./target/release/md-translate`.
 
-### 3. Set Up Your API Key
-
-**Option A: Environment Variable (Recommended)**
+### 2. Configure `.env` File
+Create or edit `.env` in the root directory:
 ```bash
-# Windows PowerShell
-$env:GEMINI_API_KEY="your-api-key-here"
-
-# Windows Command Prompt
-set GEMINI_API_KEY=your-api-key-here
-
-# Linux/Mac
-export GEMINI_API_KEY="your-api-key-here"
+cp env.example .env
 ```
 
-**Option B: Use with Command**
-```bash
-node bin/cli.js translate -i file.md -l Spanish --key your-api-key-here
+Edit `.env`:
+```env
+GEMINI_API_KEY=your-google-gemini-api-key-here
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
-### 4. Test with Sample File
-
-Try translating the included sample file:
-
+### 3. Test with Sample File
 ```bash
-# Set your API key first, then run:
-node bin/cli.js translate -i examples/sample.md -l Spanish
+cargo run -- translate -i examples/sample.md -l Spanish
 
-# Or use npm script:
-npm run demo
+# Or directly using release binary:
+./target/release/md-translate translate -i examples/sample.md -l Spanish
 ```
+
 
 ## 📚 Available Commands
 
 ```bash
 # Get help
-node bin/cli.js --help
+./target/release/md-translate --help
 
 # List supported languages
-node bin/cli.js languages
+./target/release/md-translate languages
 
 # Show setup guide
-node bin/cli.js setup
+./target/release/md-translate setup
 
 # Translate a file
-node bin/cli.js translate -i input.md -l TargetLanguage -o output.md
+./target/release/md-translate translate -i input.md -l TargetLanguage -o output.md
 ```
 
 ## 🎯 Examples
 
 ### Basic Translation
 ```bash
-node bin/cli.js translate -i README.md -l French
+./target/release/md-translate translate -i README.md -l French
 ```
 
 ### Custom Output File
 ```bash
-node bin/cli.js translate -i docs/guide.md -l German -o docs/guide_de.md
+./target/release/md-translate translate -i docs/guide.md -l German -o docs/guide_de.md
 ```
 
-### Using API Key Argument
+### Using API Key and Model Arguments
 ```bash
-node bin/cli.js translate -i file.md -l Japanese --key AIzaSyC...
+./target/release/md-translate translate -i file.md -l Japanese --key AIzaSyC... --model gemini-3.5-flash-lite
 ```
 
-## 🛠️ Make it Global (Optional)
+## 🛠️ Install to System (Optional)
 
 To use `md-translate` from anywhere:
 
 ```bash
-npm link
+cargo install --path .
 ```
 
 Then you can use:
@@ -90,6 +77,7 @@ md-translate translate -i file.md -l Spanish
 md-translate languages
 md-translate setup
 ```
+
 
 ## 🔍 Troubleshooting
 
