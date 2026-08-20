@@ -247,6 +247,7 @@ impl MarkdownTranslator {
         Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Max retries exceeded")))
     }
 
+    #[allow(dead_code)]
     pub async fn translate_markdown<F>(
         &self,
         content: &str,
@@ -294,11 +295,13 @@ impl MarkdownTranslator {
         input_path: &Path,
         output_path: &Path,
         target_language: &str,
-        progress_callback: F,
+        mut progress_callback: F,
     ) -> Result<TranslationResult>
     where
         F: FnMut(usize, usize),
     {
+        use tokio::io::AsyncWriteExt;
+
         if !input_path.exists() {
             bail!("Input file does not exist: {}", input_path.display());
         }
@@ -312,19 +315,100 @@ impl MarkdownTranslator {
             bail!("Input file is empty: {}", input_path.display());
         }
 
-        let translated_content = self
-            .translate_markdown(&content, target_language, progress_callback)
-            .await?;
-
         if let Some(parent) = output_path.parent() {
-            tokio::fs::create_dir_all(parent).await.with_context(|| {
-                format!("Failed to create output directory: {}", parent.display())
-            })?;
+            if !parent.as_os_str().is_empty() {
+                tokio::fs::create_dir_all(parent).await.with_context(|| {
+                    format!("Failed to create output directory: {}", parent.display())
+                })?;
+            }
         }
 
-        tokio::fs::write(output_path, &translated_content)
+        let temp_path = PathBuf::from(format!("{}.tmp", output_path.display()));
+        let mut temp_file = tokio::fs::File::create(&temp_path)
             .await
-            .with_context(|| format!("Failed to write translated file: {}", output_path.display()))?;
+            .with_context(|| format!("Failed to create temporary file: {}", temp_path.display()))?;
+
+        let chunks = self.split_into_chunks(&content, self.chunk_size);
+        let total_chunks = chunks.len();
+
+        println!(
+            "{}",
+            format!(
+                "Translating {} chunk(s) (chunk size: ~{} chars) to {}...",
+                total_chunks,
+                self.chunk_size,
+                target_language
+            )
+            .blue()
+        );
+
+        let mut translated_length = 0;
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            progress_callback(i + 1, total_chunks);
+
+            match self.translate_chunk(chunk, target_language).await {
+                Ok(translated_chunk) => {
+                    if i > 0 {
+                        temp_file.write_all(b"\n\n").await.with_context(|| {
+                            format!("Failed to write separator to temporary file: {}", temp_path.display())
+                        })?;
+                        translated_length += 2;
+                    }
+                    temp_file.write_all(translated_chunk.as_bytes()).await.with_context(|| {
+                        format!("Failed to write chunk to temporary file: {}", temp_path.display())
+                    })?;
+                    temp_file.flush().await.with_context(|| {
+                        format!("Failed to flush temporary file: {}", temp_path.display())
+                    })?;
+                    translated_length += translated_chunk.len();
+
+                    if i < total_chunks - 1 {
+                        tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+                    }
+                }
+                Err(err) => {
+                    let _ = temp_file.flush().await;
+                    drop(temp_file);
+                    eprintln!(
+                        "{}",
+                        format!(
+                            "⚠️  Translation interrupted at chunk {}/{}. Partial translation saved to: {}",
+                            i + 1,
+                            total_chunks,
+                            temp_path.display()
+                        )
+                        .yellow()
+                    );
+                    return Err(err.context(format!(
+                        "Translation failed at chunk {}/{}. Partial translation preserved in: {}",
+                        i + 1,
+                        total_chunks,
+                        temp_path.display()
+                    )));
+                }
+            }
+        }
+
+        // Ensure newline at end of file
+        temp_file.write_all(b"\n").await.ok();
+        temp_file.flush().await.ok();
+        drop(temp_file);
+        translated_length += 1;
+
+        // Atomically replace target file with temp file (or fallback to copy)
+        if let Err(_) = tokio::fs::rename(&temp_path, output_path).await {
+            tokio::fs::copy(&temp_path, output_path)
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to copy temporary file {} to {}",
+                        temp_path.display(),
+                        output_path.display()
+                    )
+                })?;
+            let _ = tokio::fs::remove_file(&temp_path).await;
+        }
 
         println!(
             "{}",
@@ -336,7 +420,7 @@ impl MarkdownTranslator {
             output_path: output_path.to_path_buf(),
             target_language: target_language.to_string(),
             original_length: content.len(),
-            translated_length: translated_content.len(),
+            translated_length,
             error: None,
         })
     }
@@ -351,5 +435,49 @@ impl MarkdownTranslator {
             "Croatian", "Serbian", "Slovak", "Slovenian", "Estonian",
             "Latvian", "Lithuanian", "Catalan", "Basque", "Welsh", "Irish",
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_into_chunks() {
+        let translator = MarkdownTranslator::new(
+            "dummy_key".to_string(),
+            "gemini-3.6-flash".to_string(),
+            50,
+            0,
+            0,
+        );
+
+        let markdown = "# Title\n\nThis is paragraph one.\n\nThis is paragraph two.\n\nThis is paragraph three.";
+        let chunks = translator.split_into_chunks(markdown, 30);
+        assert!(chunks.len() > 1);
+        for chunk in &chunks {
+            assert!(chunk.len() <= 50);
+        }
+    }
+
+    #[test]
+    fn test_model_normalization() {
+        let translator = MarkdownTranslator::new(
+            "dummy_key".to_string(),
+            "models/gemini-pro".to_string(),
+            6000,
+            0,
+            0,
+        );
+        assert_eq!(translator.model_name, "gemini-pro");
+
+        let translator2 = MarkdownTranslator::new(
+            "dummy_key".to_string(),
+            "custom-model".to_string(),
+            6000,
+            0,
+            0,
+        );
+        assert_eq!(translator2.model_name, "gemini-custom-model");
     }
 }
