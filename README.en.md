@@ -8,7 +8,9 @@ A fast, high-performance command-line tool built with **Rust** that uses Google 
 
 - 🌍 **Multi-language support** - Translate to 40+ languages
 - 📝 **Markdown, MDX & Quarto (.qmd) aware** - Preserves markdown, MDX, and Quarto specific formatting (YAML frontmatter, cell options `#|`, callouts `:::`, shortcodes, headers, links, code blocks, tables, etc.)
-- 🔄 **Smart chunking** - Handles large files by splitting content intelligently
+- 🔄 **Smart chunking** - Handles large files by splitting content into manageable chunks (default: 6,000 characters)
+- 🛡️ **Exponential backoff retry** - Automatically retries on network drops, timeouts, 429 rate limits, and transient server errors up to 3 times
+- ⏱️ **Rate limit delay control** - Configurable delays between requests to stay within API quotas
 - 🎯 **Selective translation** - Translates text and comments/captions while keeping executable code, options, and URLs intact
 - 📂 **Batch processing** - Translate multiple files using glob patterns (e.g., `docs/**/*.qmd`, `docs/**/*.md`)
 - 🏗️ **Structure preservation** - Maintain directory structure or flatten output as needed
@@ -123,6 +125,9 @@ Options:
   -m, --model <model>      Google Gemini model name (optional if set in .env)
       --flat               Use flat structure in output directory (default: preserve structure)
       --suffix <suffix>    Custom suffix for output files (default: language name)
+      --chunk-size <size>  Chunk size in characters for splitting large documents (default: 6000)
+      --delay <ms>         Delay between API requests in milliseconds (default: 1500)
+      --retries <count>    Maximum retries on rate limit or network error (default: 3)
 ```
 
 #### `languages` - List supported languages

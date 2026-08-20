@@ -41,7 +41,7 @@ pub struct TranslateArgs {
     #[arg(short = 'k', long = "key")]
     pub key: Option<String>,
 
-    /// Google Gemini model name (or set GEMINI_MODEL env var in .env, default: gemini-3.5-flash-lite)
+    /// Google Gemini model name (or set GEMINI_MODEL env var in .env, default: gemini-3.6-flash)
     #[arg(short = 'm', long = "model")]
     pub model: Option<String>,
 
@@ -52,4 +52,16 @@ pub struct TranslateArgs {
     /// Custom suffix for output files (default: language name)
     #[arg(long = "suffix")]
     pub suffix: Option<String>,
+
+    /// Chunk size in characters for splitting large documents (default: 6000)
+    #[arg(long = "chunk-size")]
+    pub chunk_size: Option<usize>,
+
+    /// Delay between API requests in milliseconds (default: 1500)
+    #[arg(long = "delay")]
+    pub delay: Option<u64>,
+
+    /// Maximum number of retries on network/rate-limit error (default: 3)
+    #[arg(long = "retries")]
+    pub retries: Option<u32>,
 }

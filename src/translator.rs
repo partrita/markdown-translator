@@ -53,16 +53,28 @@ pub struct MarkdownTranslator {
     api_key: String,
     model_name: String,
     client: reqwest::Client,
+    pub chunk_size: usize,
+    pub delay_ms: u64,
+    pub max_retries: u32,
 }
 
 impl MarkdownTranslator {
-    pub const DEFAULT_CHUNK_SIZE: usize = 800_000;
+    pub const DEFAULT_CHUNK_SIZE: usize = 6_000;
+    pub const DEFAULT_DELAY_MS: u64 = 1_500;
+    pub const DEFAULT_MAX_RETRIES: u32 = 3;
 
-    pub fn new(api_key: String, model_name: String) -> Self {
-        let normalized_model = if !model_name.starts_with("gemini-") && !model_name.starts_with("models/") {
-            format!("gemini-{}", model_name)
+    pub fn new(
+        api_key: String,
+        model_name: String,
+        chunk_size: usize,
+        delay_ms: u64,
+        max_retries: u32,
+    ) -> Self {
+        let model_clean = model_name.strip_prefix("models/").unwrap_or(&model_name);
+        let normalized_model = if !model_clean.starts_with("gemini-") {
+            format!("gemini-{}", model_clean)
         } else {
-            model_name
+            model_clean.to_string()
         };
 
         let client = reqwest::Client::builder()
@@ -76,6 +88,9 @@ impl MarkdownTranslator {
             api_key,
             model_name: normalized_model,
             client,
+            chunk_size,
+            delay_ms,
+            max_retries,
         }
     }
 
@@ -109,14 +124,14 @@ impl MarkdownTranslator {
             IMPORTANT INSTRUCTIONS:\n\
             1. Preserve ALL Markdown, MDX, and Quarto syntax and formatting (headers, links, code blocks, tables, callout blocks `:::`, shortcodes `{{{{< ... >}}}}`, JSX tags, etc.)\n\
             2. For YAML frontmatter (between `---` at the beginning):\n\
-               - Translate user-facing string values (e.g., `title:`, `subtitle:`, `description:`, `abstract:`)\n\
-               - Do NOT translate YAML keys (e.g., `format:`, `author:`, `date:`, `execute:`, `knitr:`, `jupyter:`)\n\
-               - Do NOT translate boolean, numeric, or configuration values (e.g., `toc: true`, `echo: false`, `html`)\n\
+                - Translate user-facing string values (e.g., `title:`, `subtitle:`, `description:`, `abstract:`)\n\
+                - Do NOT translate YAML keys (e.g., `format:`, `author:`, `date:`, `execute:`, `knitr:`, `jupyter:`)\n\
+                - Do NOT translate boolean, numeric, or configuration values (e.g., `toc: true`, `echo: false`, `html`)\n\
             3. For Quarto/Markdown code blocks (```{{...}}```):\n\
-               - Do NOT translate executable code itself, URLs, or file paths\n\
-               - Do NOT translate cell execution option keys (e.g., `#| echo:`, `#| label:`, `#| warning:`)\n\
-               - DO translate human-readable captions/titles in cell options (e.g., `#| fig-cap: \"...\"`, `#| tbl-cap: \"...\"`)\n\
-               - DO translate human-readable code comments (e.g., `# ...`, `// ...`, `/* ... */`)\n\
+                - Do NOT translate executable code itself, URLs, or file paths\n\
+                - Do NOT translate cell execution option keys (e.g., `#| echo:`, `#| label:`, `#| warning:`)\n\
+                - DO translate human-readable captions/titles in cell options (e.g., `#| fig-cap: \"...\"`, `#| tbl-cap: \"...\"`)\n\
+                - DO translate human-readable code comments (e.g., `# ...`, `// ...`, `/* ... */`)\n\
             4. Do NOT translate inline code expressions (e.g., `r ...`, `python ...`) or Quarto shortcodes\n\
             5. Maintain the exact indentation, structure, and line breaks\n\
             6. If there are technical terms or proper nouns that should remain in English/original, keep them\n\
@@ -127,7 +142,7 @@ impl MarkdownTranslator {
         )
     }
 
-    pub async fn translate_chunk(&self, chunk: &str, target_language: &str) -> Result<String> {
+    async fn translate_chunk_once(&self, chunk: &str, target_language: &str) -> Result<String> {
         let prompt = self.create_translation_prompt(chunk, target_language);
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
@@ -146,7 +161,7 @@ impl MarkdownTranslator {
             .json(&request_body)
             .send()
             .await
-            .context("Failed to send request to Gemini API")?;
+            .with_context(|| format!("Failed to send HTTP request to Gemini API (model: {})", self.model_name))?;
 
         let status = response.status();
         let body_text = response
@@ -157,7 +172,12 @@ impl MarkdownTranslator {
         if !status.is_success() {
             if let Ok(error_response) = serde_json::from_str::<GenerateContentResponse>(&body_text) {
                 if let Some(err) = error_response.error {
-                    bail!("Gemini API error ({}): {}", err.status.unwrap_or_default(), err.message);
+                    bail!(
+                        "Gemini API error [{}] {}: {}",
+                        status.as_u16(),
+                        err.status.unwrap_or_default(),
+                        err.message
+                    );
                 }
             }
             bail!("Gemini API returned status {}: {}", status, body_text);
@@ -183,6 +203,50 @@ impl MarkdownTranslator {
         bail!("No text content found in Gemini response");
     }
 
+    pub async fn translate_chunk(&self, chunk: &str, target_language: &str) -> Result<String> {
+        let max_attempts = self.max_retries + 1;
+        let mut last_err = None;
+
+        for attempt in 1..=max_attempts {
+            match self.translate_chunk_once(chunk, target_language).await {
+                Ok(result) => return Ok(result),
+                Err(err) => {
+                    let err_str = format!("{:#}", err);
+                    let is_retryable = err_str.contains("429")
+                        || err_str.contains("503")
+                        || err_str.contains("500")
+                        || err_str.contains("502")
+                        || err_str.contains("504")
+                        || err_str.contains("RESOURCE_EXHAUSTED")
+                        || err_str.contains("ResourceExhausted")
+                        || err_str.contains("timed out")
+                        || err_str.contains("timeout")
+                        || err_str.contains("connection closed")
+                        || err_str.contains("Connection reset")
+                        || err_str.contains("Failed to send HTTP request");
+
+                    if attempt < max_attempts && is_retryable {
+                        let backoff_secs = 2u64.pow(attempt - 1) * 2; // 2s, 4s, 8s...
+                        eprintln!(
+                            "{}",
+                            format!(
+                                "   ⚠️ Request failed (attempt {}/{}): {}. Retrying in {}s...",
+                                attempt, max_attempts, err, backoff_secs
+                            )
+                            .yellow()
+                        );
+                        tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+                        last_err = Some(err);
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Max retries exceeded")))
+    }
+
     pub async fn translate_markdown<F>(
         &self,
         content: &str,
@@ -192,14 +256,15 @@ impl MarkdownTranslator {
     where
         F: FnMut(usize, usize),
     {
-        let chunks = self.split_into_chunks(content, Self::DEFAULT_CHUNK_SIZE);
+        let chunks = self.split_into_chunks(content, self.chunk_size);
         let mut translated_chunks = Vec::with_capacity(chunks.len());
 
         println!(
             "{}",
             format!(
-                "Translating {} chunk(s) to {}...",
+                "Translating {} chunk(s) (chunk size: ~{} chars) to {}...",
                 chunks.len(),
+                self.chunk_size,
                 target_language
             )
             .blue()
@@ -212,7 +277,7 @@ impl MarkdownTranslator {
             translated_chunks.push(translated_chunk);
 
             if i < chunks.len() - 1 {
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
             }
         }
 

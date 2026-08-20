@@ -8,7 +8,9 @@ Google Gemini AI를 사용하여 Markdown, MDX 및 Quarto Document (`.qmd`) 파�
 
 - 🌍 **40개 이상의 다국어 지원** - 한국어, 영어, 일본어, 중국어, 스페인어, 프랑스어, 독일어 등 다양한 언어 지원
 - 📝 **Markdown, MDX, Quarto (.qmd) 지원** - 헤더, 링크, 코드 블록, 표, 인용구뿐만 아니라 Quarto 전용 구문(YAML Frontmatter, 실행 옵션 `#|`, Callout 블록 `:::`, Shortcode)의 서식을 손상 없이 유지
-- 🔄 **스마트 청킹(Smart Chunking)** - 대용량 파일도 컨텍스트 길이에 맞춰 지능적으로 분할 번역
+- 🔄 **스마트 청킹(Smart Chunking)** - 대용량 파일도 설정된 청크 크기(기본 6,000자)로 지능적으로 분할 번역
+- 🛡️ **지수 백오프 기반 자동 재시도 (Exponential Backoff)** - 네트워크 불안정, Rate Limit(429), 일시적 서버 오류 발생 시 최대 3회 자동 대기 및 재시도
+- ⏱️ **Rate Limit 제어 (지연 시간 설정)** - API 사용량 한도 초과 방지를 위한 청크 간 딜레이 제어
 - 🎯 **선택적 번역** - 코드 블록 내 주석 및 캡션은 번역하되, 실행 코드, URL, 파일 경로는 그대로 보존
 - 📂 **배치(Batch) 일괄 처리** - Glob 패턴(`docs/**/*.qmd`, `docs/**/*.md`)을 통한 다중 파일 동시 번역
 - 🏗️ **디렉토리 구조 유지/평탄화** - 원본 하위 폴더 구조를 그대로 유지하거나 단일 폴더로 평탄화(`--flat`) 가능
@@ -128,10 +130,25 @@ Glob 패턴을 사용하여 여러 마크다운/Quarto 파일을 한 번에 번�
   -o, --output <파일>      출력 파일 경로 (단일 파일 번역 시)
   -d, --output-dir <디렉토리> 출력 디렉토리 (배치 번역 또는 단일 파일)
   -k, --key <API키>        Google Gemini API 키 (.env에 설정 시 생략 가능)
-  -m, --model <모델명>     Google Gemini 모델명 (.env에 설정 시 생략 가능, 기본값: gemini-3.5-flash-lite)
+  -m, --model <모델명>     Google Gemini 모델명 (.env에 설정 시 생략 가능, 기본값: gemini-3.6-flash)
       --flat              출력 디렉토리에서 하위 폴더 구조 없이 평탄화
       --suffix <접미사>    출력 파일명 뒤에 붙을 접미사 (기본값: 언어명)
+      --chunk-size <글자수> 대용량 파일 분할 청크 크기 (기본값: 6000자)
+      --delay <밀리초>     청크 요청 간 대기 시간 (기본값: 1500ms)
+      --retries <횟수>     네트워크/Rate Limit 오류 시 최대 재시도 횟수 (기본값: 3회)
 ```
+
+### 💡 대용량 문서 번역 및 안정성 (Smart Chunking & Retry)
+
+긴 문서(책, 논문, 대형 튜토리얼 등)를 번역할 때 발생할 수 있는 LLM 토큰 한도 초과, API Rate Limit(429), 네트워크 순단을 방지하는 최적화 옵션입니다:
+
+- **자동 청킹 분할**: 문서를 약 6,000자 단위로 지능적으로 분할하여 안정적인 번역 품질을 유지합니다.
+- **지수 백오프 자동 재시도**: 일시적인 네트워크 오류나 Rate Limit(429) 발생 시 2초, 4초, 8초 대기 후 최대 3회 자동 재시도합니다.
+- **Rate Limit 최적화 예시**:
+  ```bash
+  # 무료 티어 등 엄격한 Rate Limit 환경에서 긴 문서를 안전하게 번역
+  md-translate translate -i large_book.qmd -l Korean --delay 3000 --chunk-size 4000
+  ```
 
 #### `languages` - 지원 언어 목록 확인
 

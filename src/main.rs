@@ -28,11 +28,13 @@ async fn main() {
     match cli.command {
         Some(Commands::Translate(args)) => {
             if let Err(e) = handle_translate(args).await {
-                eprintln!("{}", format!("\n❌ Error: {}", e).red());
-                let err_str = e.to_string();
+                eprintln!("{}", format!("\n❌ Error: {:#}", e).red());
+                let err_str = format!("{:#}", e);
                 if err_str.contains("API_KEY_INVALID") || err_str.contains("API key not valid") {
                     println!("{}", "Please check your Google Gemini API key".yellow());
                     println!("{}", "Get your API key from: https://aistudio.google.com/app/apikey".blue());
+                } else if err_str.contains("429") || err_str.contains("RESOURCE_EXHAUSTED") || err_str.contains("ResourceExhausted") {
+                    println!("{}", "💡 Tip: Gemini API Rate limit exceeded. Try adding `--delay 3000` or reducing `--chunk-size 4000`".yellow());
                 }
                 process::exit(1);
             }
@@ -74,9 +76,24 @@ async fn handle_translate(args: TranslateArgs) -> Result<()> {
         .model
         .or_else(|| std::env::var("GEMINI_MODEL").ok())
         .filter(|m| !m.trim().is_empty())
-        .unwrap_or_else(|| "gemini-3.5-flash-lite".to_string());
+        .unwrap_or_else(|| "gemini-3.6-flash".to_string());
 
-    let translator = MarkdownTranslator::new(api_key, model_name);
+    let chunk_size = args
+        .chunk_size
+        .or_else(|| std::env::var("TRANSLATION_CHUNK_SIZE").ok().and_then(|v| v.parse().ok()))
+        .unwrap_or(MarkdownTranslator::DEFAULT_CHUNK_SIZE);
+
+    let delay_ms = args
+        .delay
+        .or_else(|| std::env::var("TRANSLATION_DELAY_MS").ok().and_then(|v| v.parse().ok()))
+        .unwrap_or(MarkdownTranslator::DEFAULT_DELAY_MS);
+
+    let max_retries = args
+        .retries
+        .or_else(|| std::env::var("TRANSLATION_MAX_RETRIES").ok().and_then(|v| v.parse().ok()))
+        .unwrap_or(MarkdownTranslator::DEFAULT_MAX_RETRIES);
+
+    let translator = MarkdownTranslator::new(api_key, model_name, chunk_size, delay_ms, max_retries);
 
     let input_pattern = args.input.trim();
     let is_wildcard = input_pattern.contains('*') || input_pattern.contains('?');
@@ -196,14 +213,14 @@ async fn handle_translate(args: TranslateArgs) -> Result<()> {
                     results.push(res);
                 }
                 Err(err) => {
-                    eprintln!("{}", format!("❌ Failed to translate {}: {}", file_path.display(), err).red());
+                    eprintln!("{}", format!("❌ Failed to translate {}: {:#}", file_path.display(), err).red());
                     results.push(TranslationResult {
                         input_path: file_path.clone(),
                         output_path,
                         target_language: args.language.clone(),
                         original_length: 0,
                         translated_length: 0,
-                        error: Some(err.to_string()),
+                        error: Some(format!("{:#}", err)),
                     });
                 }
             }
